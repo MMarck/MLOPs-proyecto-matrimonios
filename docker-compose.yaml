@@ -26,6 +26,7 @@ x-airflow-common: &airflow-common
     - ${AIRFLOW_PROJ_DIR:-./airflow}/config:/opt/airflow/config
     - ${AIRFLOW_PROJ_DIR:-./airflow}/plugins:/opt/airflow/plugins
     - ${AIRFLOW_PROJ_DIR:-./airflow}/secrets:/opt/secrets
+    - ./dataset_combinado.csv:/opt/airflow/dataset_combinado.csv
   networks:
     - frontend
     - backend
@@ -149,8 +150,8 @@ services:
     depends_on:
       mlflow:
         condition: service_healthy
-      airflow-webserver:
-        condition: service_healthy
+      # airflow-webserver:
+      #   condition: service_healthy
     ports:
       - "${FASTAPI_PORT:-8800}:8800"
     networks:
@@ -172,22 +173,22 @@ services:
       start_period: 120s
       retries: 3
 
-  airflow-webserver:
-    <<: *airflow-common
-    container_name: airflow_webserver
-    command: webserver
-    ports:
-      - "${AIRFLOW_PORT:-8080}:8080"
-    healthcheck:
-      test: [ "CMD", "curl", "--fail", "http://localhost:8080/health" ]
-      interval: 60s
-      timeout: 10s
-      retries: 5
-    restart: always
-    depends_on:
-      <<: *airflow-common-depends-on
-      airflow-init:
-        condition: service_completed_successfully
+  # airflow-webserver:
+  #   <<: *airflow-common
+  #   container_name: airflow_webserver
+  #   command: webserver
+  #   ports:
+  #     - "${AIRFLOW_PORT:-8080}:8080"
+  #   healthcheck:
+  #     test: [ "CMD", "curl", "--fail", "http://localhost:8080/health" ]
+  #     interval: 60s
+  #     timeout: 10s
+  #     retries: 5
+  #   restart: always
+  #   depends_on:
+  #     <<: *airflow-common-depends-on
+  #     airflow-init:
+  #       condition: service_completed_successfully
 
   airflow-cli:
     <<: *airflow-common
@@ -309,3 +310,12 @@ networks:
 volumes:
   db_data:
   minio_data:
+
+x-resources:
+  &high-memory
+    deploy:
+      resources:
+        limits:
+          memory: 16g
+        reservations:
+          memory: 8g
