@@ -16,15 +16,15 @@ from typing_extensions import Annotated
 
 def load_model(model_name: str, alias: str):
     """
-    Load a trained model and associated data dictionary.
+    Carga el modelo entrenado y el diccionario de datos asociado.
 
-    This function attempts to load a trained model specified by its name and alias. If the model is not found in the
-    MLflow registry, it loads the default model from a file. Additionally, it loads information about the ETL pipeline
-    from an S3 bucket. If the data dictionary is not found in the S3 bucket, it loads it from a local file.
+    Esta función intenta cargar un modelo entrenado especificado por su nombre y alias. Si el modelo no se encuentra en el
+    registro de MLflow, carga el modelo predeterminado desde un archivo. Además, carga información sobre el pipeline de ETL
+    desde un bucket de S3. Si el diccionario de datos no se encuentra en el bucket de S3, lo carga desde un archivo local.
 
-    :param model_name: The name of the model.
-    :param alias: The alias of the model version.
-    :return: A tuple containing the loaded model, its version, and the data dictionary.
+    :param model_name: El nombre del modelo.
+    :param alias: El alias de la versión del modelo.
+    :return: Una tupla que contiene el modelo cargado, su versión y el diccionario de datos.
     """
 
     try:
@@ -35,31 +35,34 @@ def load_model(model_name: str, alias: str):
         model_data_mlflow = client_mlflow.get_model_version_by_alias(model_name, alias)
         model_ml = mlflow.sklearn.load_model(model_data_mlflow.source)
         version_model_ml = int(model_data_mlflow.version)
-    except:
+    except Exception as e:
+        print("Model not found in MLflow, loading default model... ")
         # If there is no registry in MLflow, open the default model
-        file_ml = open('/app/files/model.pkl', 'rb')
-        model_ml = pickle.load(file_ml)
-        file_ml.close()
-        version_model_ml = 0
+        # file_ml = open('/opt/fastapi/model.pkl', 'rb')
+        # model_ml = pickle.load(file_ml)
+        # file_ml.close()
+        # version_model_ml = 0
 
-    try:
-        # Load information of the ETL pipeline from S3
-        s3 = boto3.client('s3')
+    # try:
+    #     # Load information of the ETL pipeline from S3
+    #     s3 = boto3.client('s3')
 
-        s3.head_object(Bucket='data', Key='data_info/data.json')
-        result_s3 = s3.get_object(Bucket='data', Key='data_info/data.json')
-        text_s3 = result_s3["Body"].read().decode()
-        data_dictionary = json.loads(text_s3)
+    #     s3.head_object(Bucket='data', Key='data_info/data.json')
+    #     result_s3 = s3.get_object(Bucket='data', Key='data_info/data.json')
+    #     text_s3 = result_s3["Body"].read().decode()
+    #     data_dictionary = json.loads(text_s3)
+    #     print(f"Data dictionary loaded from S3: {data_dictionary.keys()}")
 
-        data_dictionary["standard_scaler_mean"] = np.array(data_dictionary["standard_scaler_mean"])
-        data_dictionary["standard_scaler_std"] = np.array(data_dictionary["standard_scaler_std"])
-    except:
-        # If data dictionary is not found in S3, load it from local file
-        file_s3 = open('/app/files/data.json', 'r')
-        data_dictionary = json.load(file_s3)
-        file_s3.close()
+    #     data_dictionary["standard_scaler_mean"] = np.array(data_dictionary["standard_scaler_mean"])
+    #     data_dictionary["standard_scaler_std"] = np.array(data_dictionary["standard_scaler_std"])
+    # except:
+    #     # If data dictionary is not found in S3, load it from local file
+    #     print("Data dictionary not found in S3, loading default data dictionary...")
+    #     # file_s3 = open('/app/files/data.json', 'r')
+    #     # data_dictionary = json.load(file_s3)
+    #     # file_s3.close()
 
-    return model_ml, version_model_ml, data_dictionary
+    return model_ml, version_model_ml
 
 
 def check_model():
@@ -240,70 +243,75 @@ class ModelOutput(BaseModel):
 
 
 # Load the model before start
-model, version_model, data_dict = load_model("heart_disease_model_prod", "champion")
+model, version_model = load_model("divorcios_ecuador_modelo_prod", "champion")
 
+print(f"Model loaded: {model.__str__()}")
+print(f"Model version: {version_model}")
 app = FastAPI()
 
 
 @app.get("/")
 async def read_root():
     """
-    Root endpoint of the Heart Disease Detector API.
+    Ruta raíz de la API de prediccion de un posible divorcio para parejas ecuatorianas.
 
-    This endpoint returns a JSON response with a welcome message to indicate that the API is running.
+    Este endpoint devuelve una respuesta JSON con un mensaje de bienvenida para indicar que la API está en funcionamiento.
     """
-    return JSONResponse(content=jsonable_encoder({"message": "Welcome to the Heart Disease Detector API"}))
+    return JSONResponse(content=jsonable_encoder({"message": "Bienvenido a la API de predicción de posibles divorcios para parejas ecuatorianas"}))
 
 
-@app.post("/predict/", response_model=ModelOutput)
+@app.post("/predict/", response_model=[])
 def predict(
-    features: Annotated[
-        ModelInput,
-        Body(embed=True),
-    ],
-    background_tasks: BackgroundTasks
+    # features: Annotated[
+    #     ModelInput,
+    #     Body(embed=True),
+    # ],
+    # background_tasks: BackgroundTasks
 ):
     """
-    Endpoint for predicting heart disease.
+    Endpoint para predecir un divoricio en parejas ecuatorianas.
 
-    This endpoint receives features related to a patient's health and predicts whether the patient has heart disease
-    or not using a trained model. It returns the prediction result in both integer and string formats.
+    Este endpoint recibe características relacionadas a un matrimonio enlistado en el registro civil ecuatoriano 
+    y predice si la pareja tiene una alta probabilidad de divorciarse o no utilizando un modelo entrenado.
+    Devuelve un porcentaje de probabilidad de divorcio y un mensaje indicando si la pareja tiene una alta probabilidad
+    de divorcio o no.
     """
 
-    # Extract features from the request and convert them into a list and dictionary
-    features_list = [*features.dict().values()]
-    features_key = [*features.dict().keys()]
+    # # Extract features from the request and convert them into a list and dictionary
+    # features_list = [*features.dict().values()]
+    # features_key = [*features.dict().keys()]
 
-    # Convert features into a pandas DataFrame
-    features_df = pd.DataFrame(np.array(features_list).reshape([1, -1]), columns=features_key)
+    # # Convert features into a pandas DataFrame
+    # features_df = pd.DataFrame(np.array(features_list).reshape([1, -1]), columns=features_key)
 
-    # Process categorical features
-    for categorical_col in data_dict["categorical_columns"]:
-        features_df[categorical_col] = features_df[categorical_col].astype(int)
-        categories = data_dict["categories_values_per_categorical"][categorical_col]
-        features_df[categorical_col] = pd.Categorical(features_df[categorical_col], categories=categories)
+    # # Process categorical features
+    # for categorical_col in data_dict["categorical_columns"]:
+    #     features_df[categorical_col] = features_df[categorical_col].astype(int)
+    #     categories = data_dict["categories_values_per_categorical"][categorical_col]
+    #     features_df[categorical_col] = pd.Categorical(features_df[categorical_col], categories=categories)
 
-    # Convert categorical features into dummy variables
-    features_df = pd.get_dummies(data=features_df,
-                                 columns=data_dict["categorical_columns"],
-                                 drop_first=True)
+    # # Convert categorical features into dummy variables
+    # features_df = pd.get_dummies(data=features_df,
+    #                              columns=data_dict["categorical_columns"],
+    #                              drop_first=True)
 
-    # Reorder DataFrame columns
-    features_df = features_df[data_dict["columns_after_dummy"]]
+    # # Reorder DataFrame columns
+    # features_df = features_df[data_dict["columns_after_dummy"]]
 
-    # Scale the data using standard scaler
-    features_df = (features_df-data_dict["standard_scaler_mean"])/data_dict["standard_scaler_std"]
+    # # Scale the data using standard scaler
+    # features_df = (features_df-data_dict["standard_scaler_mean"])/data_dict["standard_scaler_std"]
 
-    # Make the prediction using the trained model
-    prediction = model.predict(features_df)
+    # # Make the prediction using the trained model
+    # prediction = model.predict(features_df)
 
-    # Convert prediction result into string format
-    str_pred = "Healthy patient"
-    if prediction[0] > 0:
-        str_pred = "Heart disease detected"
+    # # Convert prediction result into string format
+    # str_pred = "Healthy patient"
+    # if prediction[0] > 0:
+    #     str_pred = "Heart disease detected"
 
-    # Check if the model has changed asynchronously
-    background_tasks.add_task(check_model)
+    # # Check if the model has changed asynchronously
+    # background_tasks.add_task(check_model)
 
     # Return the prediction result
-    return ModelOutput(int_output=bool(prediction[0].item()), str_output=str_pred)
+    # return ModelOutput(int_output=bool(prediction[0].item()), str_output=str_pred)
+    return [model.__str__(), version_model.__str__()]
