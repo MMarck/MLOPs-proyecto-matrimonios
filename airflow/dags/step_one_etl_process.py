@@ -423,33 +423,33 @@ def process_etl_dataset_div_mat():
                 raise e
 
         # Upload JSON String to an S3 Object
-        data_dict['standard_scaler_mean'] = sc_X.mean_.tolist()
-        data_dict['standard_scaler_std'] = sc_X.scale_.tolist()
-        data_string = json.dumps(data_dict, indent=2)
+        # data_dict['standard_scaler_mean'] = sc_X.mean_.tolist()
+        # data_dict['standard_scaler_std'] = sc_X.scale_.tolist()
+        # data_string = json.dumps(data_dict, indent=2)
 
-        client.put_object(
-            Bucket='data',
-            Key='data_info/data.json',
-            Body=data_string
-        )
+        # client.put_object(
+        #     Bucket='data',
+        #     Key='data_info/data.json',
+        #     Body=data_string
+        # )
 
-        mlflow.set_tracking_uri('http://mlflow:5000')
-        experiment = mlflow.set_experiment("Divorcios Ecuador 2023")
+        # mlflow.set_tracking_uri('http://mlflow:5000')
+        # experiment = mlflow.set_experiment("Divorcios Ecuador 2023")
 
         # Obtain the last experiment run_id to log the new information
-        list_run = mlflow.search_runs([experiment.experiment_id], output_format="list")
+        # list_run = mlflow.search_runs([experiment.experiment_id], output_format="list")
 
-        with mlflow.start_run(run_id=list_run[0].info.run_id):
+        # with mlflow.start_run(run_id=list_run[0].info.run_id):
 
-            mlflow.log_param("Train observations", X_train.shape[0])
-            mlflow.log_param("Test observations", X_test.shape[0])
-            mlflow.log_param("Standard Scaler feature names", sc_X.feature_names_in_)
-            mlflow.log_param("Standard Scaler mean values", sc_X.mean_)
-            mlflow.log_param("Standard Scaler scale values", sc_X.scale_)
+        #     mlflow.log_param("Train observations", X_train.shape[0])
+        #     mlflow.log_param("Test observations", X_test.shape[0])
+        #     mlflow.log_param("Standard Scaler feature names", sc_X.feature_names_in_)
+        #     mlflow.log_param("Standard Scaler mean values", sc_X.mean_)
+        #     mlflow.log_param("Standard Scaler scale values", sc_X.scale_)
 
 
-    obtener_datos() >> limpieza_dataset() >> dividir_dataset() >> normalize_data()
-    # obtener_datos() >> limpieza_dataset() >> dividir_dataset() 
+    # obtener_datos() >> limpieza_dataset() >> dividir_dataset() >> normalize_data()
+    obtener_datos() >> limpieza_dataset() >> dividir_dataset() 
 
 
 dag = process_etl_dataset_div_mat()
