@@ -5,6 +5,8 @@ import mlflow
 
 import numpy as np
 import pandas as pd
+import awswrangler as wr
+from io import BytesIO
 
 from typing import Literal
 from fastapi import FastAPI, Body, BackgroundTasks
@@ -99,134 +101,206 @@ def check_model():
         # If an error occurs during the process, pass silently
         pass
 
+def load_label_encoders(path: str = "s3://data/data_info/label_encoders.pkl"):
+    """
+    Load label encoders from a file.
+
+    This function attempts to load label encoders from a file named 'label_encoders.pkl'. If the file does not exist,
+    it returns an empty dictionary.
+
+    :return: A dictionary containing the label encoders.
+    """
+
+    # Extraer bucket y clave del path
+    if path.startswith("s3://"):
+        s3_path = path[5:]  # Eliminar "s3://"
+        bucket, key = s3_path.split("/", 1)
+    else:
+        raise ValueError("El path debe comenzar con 's3://'")
+
+    # Crear cliente de S3
+    s3_client = boto3.client("s3")
+    
+    # Descargar el archivo como un objeto binario
+    response = s3_client.get_object(Bucket=bucket, Key=key)
+    pickle_data = response["Body"].read()
+    
+    # Cargar el archivo pickle desde los datos binarios
+    label_encoders = pickle.load(BytesIO(pickle_data))
+    
+    return label_encoders
+     
+    # try:
+    #     path = "s3://data/data_info/label_encoders.pkl"
+        
+    #     label_encoders = pickle.load(label_encoders_pickle)
+
+    #     return label_encoders
+    # except FileNotFoundError:
+    #     print(f"Label encoders file not found at {path}. Returning empty dictionary.")
+    #     return {}
 
 class ModelInput(BaseModel):
     """
-    Input schema for the heart disease prediction model.
+    Esquema de entrada para el modelo con parámetros personalizados.
 
-    This class defines the input fields required by the heart disease prediction model along with their descriptions
-    and validation constraints.
+    Esta clase define los campos de entrada requeridos para el modelo, con sus descripciones
+    y restricciones de validación. Todos los campos son obligatorios y de tipo entero (long).
 
-    :param age: Age of the patient (0 to 150).
-    :param sex: Sex of the patient. 1: male; 0: female.
-    :param cp: Chest pain type. 1: typical angina; 2: atypical angina; 3: non-anginal pain; 4: asymptomatic.
-    :param trestbps: Resting blood pressure in mm Hg on admission to the hospital (90 to 220).
-    :param chol: Serum cholestoral in mg/dl (110 to 600).
-    :param fbs: Fasting blood sugar. 1: >120 mg/dl; 0: <120 mg/dl.
-    :param restecg: Resting electrocardiographic results. 0: normal; 1: having ST-T wave abnormality; 2: showing
-                    probable or definite left ventricular hypertrophy.
-    :param thalach: Maximum heart rate achieved (beats per minute) (50 to 210).
-    :param exang: Exercise induced angina. 1: yes; 0: no.
-    :param oldpeak: ST depression induced by exercise relative to rest (0.0 to 7.0).
-    :param slope: The slope of the peak exercise ST segment. 1: upsloping; 2: flat; 3: downsloping.
-    :param ca: Number of major vessels colored by flourosopy (0 to 3).
-    :param thal: Thalassemia disease. 3: normal; 6: fixed defect; 7: reversable defect.
+    :param dur_mat: Duración del matrimonio en años.
+    :param hijos_2: Número de hijos de la segunda persona.
+    :param edad_2: Edad de la segunda persona.
+    :param edad_1: Edad de la primera persona.
+    :param area_1: Área de residencia de la primera persona (código numérico).
+    :param area_2: Área de residencia de la segunda persona (código numérico).
+    :param hijos_rec: Número de hijos reconocidos.
+    :param mcap_bie: Indicador de manejo de bienes (código numérico).
+    :param p_etnica1: Pertenencia étnica de la primera persona (código numérico).
+    :param cant_insc: Cantidad de inscripciones.
+    :param p_etnica2: Pertenencia étnica de la segunda persona (código numérico).
+    :param cant_hab1: Cantidad de habitantes en el hogar de la primera persona.
+    :param cant_hab2: Cantidad de habitantes en el hogar de la segunda persona.
+    :param sabe_leer2: Indicador de alfabetismo de la segunda persona (1: sí, 0: no).
+    :param sabe_leer1: Indicador de alfabetismo de la primera persona (1: sí, 0: no).
+    :param mes_nac1: Mes de nacimiento de la primera persona (1 a 12).
+    :param niv_inst2: Nivel de instrucción de la segunda persona (código numérico).
+    :param prov_insc: Provincia de inscripción (código numérico).
+    :param mes_nac2: Mes de nacimiento de la segunda persona (1 a 12).
     """
 
-    age: int = Field(
-        description="Age of the patient",
+    dur_mat: int = Field(
+        description="Duración del matrimonio en años",
         ge=0,
-        le=150,
+        le=65
     )
-    sex: int = Field(
-        description="Sex of the patient. 1: male; 0: female",
+    hijos_2: int = Field(
+        description="Número de hijos de la segunda persona",
         ge=0,
-        le=1,
+        le=150
     )
-    cp: int = Field(
-        description="Chest pain type. 1: typical angina; 2: atypical angina, 3: non-anginal pain; 4: asymptomatic",
-        ge=1,
-        le=4,
-    )
-    trestbps: float = Field(
-        description="Resting blood pressure in mm Hg on admission to the hospital",
-        ge=90,
-        le=220,
-    )
-    chol: float = Field(
-        description="Serum cholestoral in mg/dl",
-        ge=110,
-        le=600,
-    )
-    fbs: int = Field(
-        description="Fasting blood sugar. 1: >120 mg/dl; 0: <120 mg/dl",
+    edad_2: int = Field(
+        description="Edad de la segunda persona",
         ge=0,
-        le=1,
+        le=120
     )
-    restecg: int = Field(
-        description="Resting electrocardiographic results. 0: normal; 1:  having ST-T wave abnormality (T wave "
-                    "inversions and/or ST elevation or depression of > 0.05 mV), 2: showing probable or definite "
-                    "left ventricular hypertrophy by Estes' criteria",
+    edad_1: int = Field(
+        description="Edad de la primera persona",
         ge=0,
-        le=2,
+        le=120
     )
-    thalach: float = Field(
-        description="Maximum heart rate achieved (beats per minute)",
-        ge=50,
-        le=210,
+    area_1: str = Field( #['Urbana', 'Rural']
+        description="Área de residencia de la primera persona (código numérico)",
     )
-    exang: int = Field(
-        description="Exercise induced angina. 1: yes; 0: no",
+    area_2: str = Field( #['Urbana', 'Rural']
+        description="Área de residencia de la segunda persona (código numérico)",
+    )
+    hijos_rec: int = Field(
+        description="Número de hijos reconocidos",
         ge=0,
-        le=1,
+        le=12
     )
-    oldpeak: float = Field(
-        description="ST depression induced by exercise relative to rest",
-        ge=0.0,
-        le=7.0,
+    mcap_bie: str = Field( #['No', 'Si']
+        description="Indicador de manejo de bienes (código numérico)",
     )
-    slope: int = Field(
-        description="The slope of the peak exercise ST segment .1: upsloping; 2: flat, 3: downsloping",
-        ge=1,
-        le=3,
+    p_etnica1: str = Field( #['Mestizo', 'Indígena']
+        description="Pertenencia étnica de la primera persona (código numérico)",
     )
-    ca: int = Field(
-        description="Number of major vessels colored by flourosopy",
-        ge=0,
-        le=3,
+    cant_insc: str = Field( # ['Guayaquil', 'Quito']
+        description="Cantidad de inscripciones",
     )
-    thal: Literal[3, 6, 7] = Field(
-        description="Thalassemia disease. 3: normal; 6: fixed defect; 7: reversable defect",
+    p_etnica2: str = Field( #['Mestizo', 'Indígena']
+        description="Pertenencia étnica de la segunda persona (código numérico)",
+    )
+    cant_hab1: str = Field( #['Quito', 'Guayaquil']
+        description="Cantidad de habitantes en el hogar de la primera persona",
+    )
+    cant_hab2: str = Field( #['Quito', 'Guayaquil']
+        description="Cantidad de habitantes en el hogar de la segunda persona",
+    )
+    sabe_leer2: str = Field( #['No', 'Si']
+        description="Indicador de alfabetismo de la segunda persona (1: sí, 0: no)",
+    )
+    sabe_leer1: str = Field( #['No', 'Si']
+        description="Indicador de alfabetismo de la primera persona (1: sí, 0: no)",
+    )
+    mes_nac1: str = Field( # ['Agosto', 'Septiembre']
+        description="Mes de nacimiento de la primera persona (1 a 12)",
+    )
+    niv_inst2: str = Field( #['Educación media / Bachillerato', 'Superior Universitaria']
+        description="Nivel de instrucción de la segunda persona (código numérico)",
+    )
+    prov_insc: str = Field( #['Guayas', 'Pichincha']
+        description="Provincia de inscripción (código numérico)",
+    )
+    mes_nac2: str = Field( # ['Agosto', 'Septiembre']
+        description="Mes de nacimiento de la segunda persona (1 a 12)",
     )
 
     model_config = {
         "json_schema_extra": {
             "examples": [
+                # ejemplo de entrada con prediccion de Divorcio
                 {
-                    "age": 67,
-                    "sex": 1,
-                    "cp": 4,
-                    "trestbps": 160.0,
-                    "chol": 286.0,
-                    "fbs": 0,
-                    "restecg": 2,
-                    "thalach": 108.0,
-                    "exang": 1,
-                    "oldpeak": 1.5,
-                    "slope": 2,
-                    "ca": 3,
-                    "thal": 3,
+                    "dur_mat": 10,
+                    "hijos_2": 2,
+                    "edad_2": 35,
+                    "edad_1": 38,
+                    "area_1": "Urbana",
+                    "area_2": "Rural",
+                    "hijos_rec": 2,
+                    "mcap_bie": "No",
+                    "p_etnica1": "Mestizo",
+                    "cant_insc": "Guayaquil",
+                    "p_etnica2": "Mestizo",
+                    "cant_hab1": "Quito",
+                    "cant_hab2": "Guayaquil",
+                    "sabe_leer2": "Si",
+                    "sabe_leer1": "Si",
+                    "mes_nac1": "Junio",
+                    "niv_inst2": "Superior Universitaria",
+                    "prov_insc": "Pichincha",
+                    "mes_nac2": "Agosto"
+                },
+                # ejemplo de entrada con prediccion de No divorcio
+                {
+                    "dur_mat": 0,
+                    "hijos_2": 0,
+                    "edad_2": 28,
+                    "edad_1": 23,
+                    "area_1": "Urbana",
+                    "area_2": "Urbana",
+                    "hijos_rec": 2,
+                    "mcap_bie": "No",
+                    "p_etnica1": "Mestizo",
+                    "cant_insc": "Guayaquil",
+                    "p_etnica2": "Mestizo",
+                    "cant_hab1": "Quito",
+                    "cant_hab2": "Guayaquil",
+                    "sabe_leer2": "Si",
+                    "sabe_leer1": "Si",
+                    "mes_nac1": "Junio",
+                    "niv_inst2": "Superior Universitaria",
+                    "prov_insc": "Pichincha",
+                    "mes_nac2": "Agosto"
                 }
             ]
         }
     }
-
-
 class ModelOutput(BaseModel):
     """
-    Output schema for the heart disease prediction model.
+    Esquema de salida para el modelo de predicción de enfermedades cardíacas.
 
-    This class defines the output fields returned by the heart disease prediction model along with their descriptions
-    and possible values.
+    Esta clase define los campos de salida del modelo de predicción de enfermedades cardíacas,
+    junto con sus descripciones y valores posibles.
 
-    :param int_output: Output of the model. True if the patient has a heart disease.
-    :param str_output: Output of the model in string form. Can be "Healthy patient" or "Heart disease detected".
+    :param int_output: Salida del modelo entre con un valor entre 0 o 1, donde indica si representa o no un divorcio.
+    :param str_output: Salida del modelo en forma de cadena. Puede ser "No divorcio" o "Divorcio".
     """
 
-    int_output: bool = Field(
-        description="Output of the model. True if the patient has a heart disease",
+    int_output: int = Field(
+        description="",
     )
-    str_output: Literal["Healthy patient", "Heart disease detected"] = Field(
+    str_output: Literal["No divorcio", "Divorcio"] = Field(
         description="Output of the model in string form",
     )
 
@@ -234,8 +308,8 @@ class ModelOutput(BaseModel):
         "json_schema_extra": {
             "examples": [
                 {
-                    "int_output": True,
-                    "str_output": "Heart disease detected",
+                    "int_output": 0,
+                    "str_output": "No divorcio",
                 }
             ]
         }
@@ -245,8 +319,8 @@ class ModelOutput(BaseModel):
 # Load the model before start
 model, version_model = load_model("divorcios_ecuador_modelo_prod", "champion")
 
-print(f"Model loaded: {model.__str__()}")
-print(f"Model version: {version_model}")
+label_encoders = load_label_encoders("s3://data/data_info/label_encoders.pkl")
+
 app = FastAPI()
 
 
@@ -262,56 +336,54 @@ async def read_root():
 
 @app.post("/predict/", response_model=[])
 def predict(
-    # features: Annotated[
-    #     ModelInput,
-    #     Body(embed=True),
-    # ],
-    # background_tasks: BackgroundTasks
+    features: Annotated[
+        ModelInput,
+        Body(embed=True),
+    ],
+    background_tasks: BackgroundTasks
 ):
     """
     Endpoint para predecir un divoricio en parejas ecuatorianas.
 
     Este endpoint recibe características relacionadas a un matrimonio enlistado en el registro civil ecuatoriano 
-    y predice si la pareja tiene una alta probabilidad de divorciarse o no utilizando un modelo entrenado.
-    Devuelve un porcentaje de probabilidad de divorcio y un mensaje indicando si la pareja tiene una alta probabilidad
+    y predice si la pareja tiene una Divorcio de divorciarse o no utilizando un modelo entrenado.
+    Devuelve un porcentaje de probabilidad de divorcio y un mensaje indicando si la pareja tiene una Divorcio
     de divorcio o no.
     """
 
-    # # Extract features from the request and convert them into a list and dictionary
-    # features_list = [*features.dict().values()]
-    # features_key = [*features.dict().keys()]
+    # Extract features from the request and convert them into a list and dictionary
+    features_list = [*features.dict().values()]
+    features_key = [*features.dict().keys()]
 
-    # # Convert features into a pandas DataFrame
-    # features_df = pd.DataFrame(np.array(features_list).reshape([1, -1]), columns=features_key)
 
-    # # Process categorical features
-    # for categorical_col in data_dict["categorical_columns"]:
-    #     features_df[categorical_col] = features_df[categorical_col].astype(int)
-    #     categories = data_dict["categories_values_per_categorical"][categorical_col]
-    #     features_df[categorical_col] = pd.Categorical(features_df[categorical_col], categories=categories)
+    # Codificar los datos usando los label_encoders
+    encoded_features = []
+    for key, value in zip(features_key, features_list):
+        if key in label_encoders:
+            encoder = label_encoders[key]
+            print(f"Encoding feature '{key}' with value '{value}' using encoder: {encoder}")
+            encoded_value = encoder.transform([value])[0]
+            print(f"Encoded value for feature '{key}': {encoded_value}")
+            encoded_features.append(encoded_value)
+        else:
+            encoded_features.append(value)
 
-    # # Convert categorical features into dummy variables
-    # features_df = pd.get_dummies(data=features_df,
-    #                              columns=data_dict["categorical_columns"],
-    #                              drop_first=True)
+    
 
-    # # Reorder DataFrame columns
-    # features_df = features_df[data_dict["columns_after_dummy"]]
+    # Convert features into a pandas DataFrame
+    features_df = pd.DataFrame(np.array(encoded_features).reshape([1, -1]), columns=features_key)
 
-    # # Scale the data using standard scaler
-    # features_df = (features_df-data_dict["standard_scaler_mean"])/data_dict["standard_scaler_std"]
 
-    # # Make the prediction using the trained model
-    # prediction = model.predict(features_df)
+    # Make the prediction using the trained model
+    prediction = model.predict(features_df)
 
-    # # Convert prediction result into string format
-    # str_pred = "Healthy patient"
-    # if prediction[0] > 0:
-    #     str_pred = "Heart disease detected"
+    # Convert prediction result into string format
+    str_pred = "No divorcio"
+    if prediction[0] > 0:
+        str_pred = "Divorcio"
 
     # # Check if the model has changed asynchronously
     # background_tasks.add_task(check_model)
 
     # Return the prediction result
-    # return ModelOutput(int_output=bool(prediction[0].item()), str_output=str_pred)
-    return [model.__str__(), version_model.__str__()]
+    return ModelOutput(int_output=prediction[0], str_output=str_pred)

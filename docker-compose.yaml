@@ -34,6 +34,13 @@ x-airflow-common: &airflow-common
   depends_on:  &airflow-common-depends-on
     postgres:
       condition: service_healthy
+  deploy:
+    resources:
+      limits:
+        memory: 32g
+        cpus: '11'
+
+
 
 services:
   postgres:
