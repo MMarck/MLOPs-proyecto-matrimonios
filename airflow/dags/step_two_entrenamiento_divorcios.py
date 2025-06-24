@@ -114,7 +114,6 @@ def dag_reentrenamiento_modelo():
             os.remove(compressed_model_path)
             os.remove(signature_path)
 
-            # no me es posible guardar el modelo completo sin que muera el dag
             mlflow.sklearn.log_model(
                 sk_model=model,
                 artifact_path=artifact_path,
@@ -126,7 +125,6 @@ def dag_reentrenamiento_modelo():
 
             # Obtain the model URI
             return mlflow.get_artifact_uri(artifact_path)
-            # return 'kokoloko'
 
         def register_challenger(model, f1_score, model_uri):
 

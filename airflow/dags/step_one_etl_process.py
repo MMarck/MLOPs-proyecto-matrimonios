@@ -75,6 +75,9 @@ def process_etl_dataset_div_mat():
         import boto3
         import botocore.exceptions
         import mlflow
+        import joblib
+        from io import BytesIO
+        import pickle
 
         import awswrangler as wr
         import pandas as pd
@@ -164,6 +167,20 @@ def process_etl_dataset_div_mat():
         # Save information of the dataset
         client = boto3.client('s3')
 
+
+        # # Guardar los label_encoders en un archivo local
+        pickle_buffer = BytesIO()
+        pickle.dump(label_encoders, pickle_buffer)
+        pickle_buffer.seek(0)  # Volver al inicio del buffer
+        
+        # Extraer bucket y clave del path
+        s3_path = "s3://data/data_info/label_encoders.pkl"
+        s3_path = s3_path[5:]  # Eliminar "s3://"
+        bucket, key = s3_path.split("/", 1)
+        
+        # Subir el archivo a S3
+        client.put_object(Bucket=bucket, Key=key, Body=pickle_buffer.getvalue())
+
         data_dict = {}
         try:
             client.head_object(Bucket='data', Key='data_info/data.json')
@@ -229,104 +246,6 @@ def process_etl_dataset_div_mat():
         mlflow.log_input(mlflow_dataset_cleaned, context="Dataset")
 
         
-    @task.virtualenv(
-        task_id="pca_transform",
-        requirements=["awswrangler==3.6.0",
-                      "scikit-learn==1.3.2",
-                      "mlflow==2.10.2"],
-        system_site_packages=True
-    )
-    def pca_transform():
-        """
-        Principal Component Analysis (PCA) transformation of numerical columns
-        """
-        import json
-        import mlflow
-        import boto3
-        import botocore.exceptions
-
-        import awswrangler as wr
-        import pandas as pd
-        from airflow.models import Variable
-        from sklearn.preprocessing import StandardScaler
-        from sklearn.decomposition import PCA
-
-
-
-        def save_to_csv(df, path):
-            wr.s3.to_csv(df=df,
-                         path=path,
-                         index=False)
-
-        data_original_path = "s3://data/raw/dataset_limpio.csv"
-        dataset = wr.s3.read_csv(data_original_path)
-
-        target_col = Variable.get("target_col_divorcios")
-
-        X = dataset.drop(columns=[target_col])
-        y = dataset[target_col]
-
-
-
-        # Escalado de datos
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(X)
-
-        # Aplicar PCA
-        pca = PCA()
-        X_pca = pca.fit_transform(X_scaled)
-
-
-
-
-        sc_X = StandardScaler(with_mean=True, with_std=True)
-        X_train_arr = sc_X.fit_transform(X_train)
-        X_test_arr = sc_X.transform(X_test)
-
-        X_train = pd.DataFrame(X_train_arr, columns=X_train.columns)
-        X_test = pd.DataFrame(X_test_arr, columns=X_test.columns)
-
-        save_to_csv(X_train, "s3://data/final/train/divorcios_X_train.csv")
-        save_to_csv(X_test, "s3://data/final/test/divorcios_X_test.csv")
-
-        # Save information of the dataset
-        client = boto3.client('s3')
-
-        try:
-            client.head_object(Bucket='data', Key='data_info/data.json')
-            result = client.get_object(Bucket='data', Key='data_info/data.json')
-            text = result["Body"].read().decode()
-            data_dict = json.loads(text)
-        except botocore.exceptions.ClientError as e:
-                # Something else has gone wrong.
-                raise e
-
-        # Upload JSON String to an S3 Object
-        data_dict['standard_scaler_mean'] = sc_X.mean_.tolist()
-        data_dict['standard_scaler_std'] = sc_X.scale_.tolist()
-        data_string = json.dumps(data_dict, indent=2)
-
-        client.put_object(
-            Bucket='data',
-            Key='data_info/data.json',
-            Body=data_string
-        )
-
-        mlflow.set_tracking_uri('http://mlflow:5000')
-        experiment = mlflow.set_experiment("Divorcios Ecuador 2023")
-
-        # Obtain the last experiment run_id to log the new information
-        list_run = mlflow.search_runs([experiment.experiment_id], output_format="list")
-
-        with mlflow.start_run(run_id=list_run[0].info.run_id):
-
-            mlflow.log_param("Train observations", X_train.shape[0])
-            mlflow.log_param("Test observations", X_test.shape[0])
-            mlflow.log_param("Standard Scaler feature names", sc_X.feature_names_in_)
-            mlflow.log_param("Standard Scaler mean values", sc_X.mean_)
-            mlflow.log_param("Standard Scaler scale values", sc_X.scale_)
-
-
 
     @task.virtualenv(
         task_id="dividir_dataset",
@@ -365,90 +284,6 @@ def process_etl_dataset_div_mat():
         save_to_csv(y_train, "s3://data/final/train/divorcios_y_train.csv")
         save_to_csv(y_test, "s3://data/final/test/divorcios_y_test.csv")
 
-    
-
-    @task.virtualenv(
-        task_id="normalize_numerical_features",
-        requirements=["awswrangler==3.6.0",
-                      "scikit-learn==1.3.2",
-                      "mlflow==2.10.2"],
-        system_site_packages=True
-    )
-    def normalize_data():
-        """
-        Standardization of numerical columns
-        """
-        import json
-        import mlflow
-        import boto3
-        import botocore.exceptions
-
-        import awswrangler as wr
-        import pandas as pd
-
-        from sklearn.preprocessing import StandardScaler
-
-        def save_to_csv(df, path):
-            wr.s3.to_csv(df=df,
-                         path=path,
-                         index=False)
-
-        X_train = wr.s3.read_csv("s3://data/final/train/divorcios_X_train.csv")
-        X_test = wr.s3.read_csv("s3://data/final/test/divorcios_X_test.csv")
-
-        sc_X = StandardScaler(with_mean=True, with_std=True)
-        X_train_arr = sc_X.fit_transform(X_train)
-        X_test_arr = sc_X.transform(X_test)
-
-        X_train = pd.DataFrame(X_train_arr, columns=X_train.columns)
-        X_test = pd.DataFrame(X_test_arr, columns=X_test.columns)
-
-        # reducimos a 10 columnas 
-        X_train = X_train.iloc[:, :10]
-        X_test = X_test.iloc[:, :10]
-
-        save_to_csv(X_train, "s3://data/final/train/divorcios_X_train.csv")
-        save_to_csv(X_test, "s3://data/final/test/divorcios_X_test.csv")
-
-        # Save information of the dataset
-        client = boto3.client('s3')
-
-        try:
-            client.head_object(Bucket='data', Key='data_info/data.json')
-            result = client.get_object(Bucket='data', Key='data_info/data.json')
-            text = result["Body"].read().decode()
-            data_dict = json.loads(text)
-        except botocore.exceptions.ClientError as e:
-                # Something else has gone wrong.
-                raise e
-
-        # Upload JSON String to an S3 Object
-        # data_dict['standard_scaler_mean'] = sc_X.mean_.tolist()
-        # data_dict['standard_scaler_std'] = sc_X.scale_.tolist()
-        # data_string = json.dumps(data_dict, indent=2)
-
-        # client.put_object(
-        #     Bucket='data',
-        #     Key='data_info/data.json',
-        #     Body=data_string
-        # )
-
-        # mlflow.set_tracking_uri('http://mlflow:5000')
-        # experiment = mlflow.set_experiment("Divorcios Ecuador 2023")
-
-        # Obtain the last experiment run_id to log the new information
-        # list_run = mlflow.search_runs([experiment.experiment_id], output_format="list")
-
-        # with mlflow.start_run(run_id=list_run[0].info.run_id):
-
-        #     mlflow.log_param("Train observations", X_train.shape[0])
-        #     mlflow.log_param("Test observations", X_test.shape[0])
-        #     mlflow.log_param("Standard Scaler feature names", sc_X.feature_names_in_)
-        #     mlflow.log_param("Standard Scaler mean values", sc_X.mean_)
-        #     mlflow.log_param("Standard Scaler scale values", sc_X.scale_)
-
-
-    # obtener_datos() >> limpieza_dataset() >> dividir_dataset() >> normalize_data()
     obtener_datos() >> limpieza_dataset() >> dividir_dataset() 
 
 
