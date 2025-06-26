@@ -104,7 +104,7 @@ def dag_reentrenamiento():
             champion_model = mlflow.sklearn.load_model(version.source)
         except:
             print("No hay modelo 'champion'. Promocionando challenger directamente.")
-            client.set_registered_model_alias(model_name, "champion", client.get_model_version_by_alias(model_name, "None").version)
+            client.set_registered_model_alias(model_name, "champion", client.get_latest_versions(model_name, stages=["None"])[0].version)
             return
 
         # Cargar datos de prueba
