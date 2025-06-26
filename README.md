@@ -12,7 +12,6 @@ Este proyecto fue desarrollado por **Yandri Uchuari** y **Marck Murillo** como p
 ## Componentes del Proyecto
 
 - En **Apache Airflow**, un DAG que descarga y procesa los datos, realiza limpieza, transforma los features relevantes y guarda conjuntos separados para entrenamiento y prueba en el bucket `s3://divorcios-data`. Todo el proceso se rastrea con **MLflow**.
-- Un entrenamiento local a través de una notebook o script con **Optuna** para búsqueda de hiperparámetros, optimizando la métrica `accuracy`. El mejor modelo es registrado en MLflow con sus métricas, artefactos y gráficos.
 - Un **servicio API (FastAPI)** que sirve el modelo registrado, exponiendo un endpoint REST para realizar predicciones a partir de nuevos datos.
 - Otro DAG en **Airflow** que permite reentrenar el modelo con un nuevo dataset. Si el nuevo modelo supera en precisión al modelo `champion`, es promovido automáticamente a producción.
 
@@ -22,7 +21,7 @@ Este proyecto fue desarrollado por **Yandri Uchuari** y **Marck Murillo** como p
 
 1. Clona el repositorio con la rama correspondiente:
    ```bash
-   git clone -b murillo --single-branch https://github.com/MMarck/MLOPs-proyecto-matrimonios.git
+   git clone -b main --single-branch https://github.com/MMarck/MLOPs-proyecto-matrimonios.git
    cd MLOPs-proyecto-matrimonios
    ```
 
