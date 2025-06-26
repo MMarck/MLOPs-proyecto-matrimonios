@@ -1,0 +1,8 @@
+{
+  "columns_expected": [
+    "dur_mat", "hijos_2", "edad_2", "edad_1", "area_1",
+    "area_2", "hijos_rec", "mcap_bie", "p_etnica1", "cant_insc"
+  ],
+  "scaler": null,
+  "notes": "Este archivo está adaptado al modelo registrado con ID 4074e9cfc02e4c87ba686cabb9cadc83 en MLflow"
+}
