@@ -26,6 +26,7 @@ x-airflow-common: &airflow-common
     - ${AIRFLOW_PROJ_DIR:-./airflow}/config:/opt/airflow/config
     - ${AIRFLOW_PROJ_DIR:-./airflow}/plugins:/opt/airflow/plugins
     - ${AIRFLOW_PROJ_DIR:-./airflow}/secrets:/opt/secrets
+    - ./dataset_combinado.csv:/opt/airflow/dataset_combinado.csv
   networks:
     - frontend
     - backend
@@ -33,6 +34,13 @@ x-airflow-common: &airflow-common
   depends_on:  &airflow-common-depends-on
     postgres:
       condition: service_healthy
+  deploy:
+    resources:
+      limits:
+        memory: 32g
+        cpus: '11'
+
+
 
 services:
   postgres:
@@ -100,11 +108,11 @@ services:
     entrypoint: >
       /bin/sh -c '
       sleep 5;
-      /usr/bin/mc config host add s3 http://s3:9000 ${MINIO_ACCESS_KEY:-minio} ${MINIO_SECRET_ACCESS_KEY:-minio123} --api S3v4;
-      [[ ! -z "`/usr/bin/mc ls s3 | grep challenge`" ]] || /usr/bin/mc mb s3/${MLFLOW_BUCKET_NAME:-mlflow};
-      /usr/bin/mc policy download s3/${MLFLOW_BUCKET_NAME:-mlflow};
-      [[ ! -z "`/usr/bin/mc ls s3 | grep challenge`" ]] || /usr/bin/mc mb s3/${DATA_REPO_BUCKET_NAME:-data};
-      /usr/bin/mc policy download s3/${DATA_REPO_BUCKET_NAME:-data};
+      /usr/bin/mc alias set s3 http://s3:9000 ${MINIO_ACCESS_KEY:-minio} ${MINIO_SECRET_ACCESS_KEY:-minio123};
+      /usr/bin/mc ls s3/${MLFLOW_BUCKET_NAME:-mlflow} >/dev/null 2>&1 || /usr/bin/mc mb s3/${MLFLOW_BUCKET_NAME:-mlflow};
+      /usr/bin/mc anonymous set download s3/${MLFLOW_BUCKET_NAME:-mlflow};
+      /usr/bin/mc ls s3/${DATA_REPO_BUCKET_NAME:-data} >/dev/null 2>&1 || /usr/bin/mc mb s3/${DATA_REPO_BUCKET_NAME:-data};
+      /usr/bin/mc anonymous set download s3/${DATA_REPO_BUCKET_NAME:-data};
       exit 0;
       '
 
@@ -149,8 +157,8 @@ services:
     depends_on:
       mlflow:
         condition: service_healthy
-      airflow-webserver:
-        condition: service_healthy
+      # airflow-webserver:
+      #   condition: service_healthy
     ports:
       - "${FASTAPI_PORT:-8800}:8800"
     networks:
@@ -162,7 +170,7 @@ services:
       - MLFLOW_S3_ENDPOINT_URL=http://s3:9000
       - AWS_ENDPOINT_URL_S3=http://s3:9000
     command: >
-      uvicorn app:app 
+      uvicorn server_api:app 
       --host 0.0.0.0
       --port 8800
     healthcheck:
@@ -171,6 +179,8 @@ services:
       timeout: 10s
       start_period: 120s
       retries: 3
+    volumes:
+    - ${FASTAPI_PROJ_DIR:-./fastapi}:/opt/fastapi
 
   airflow-webserver:
     <<: *airflow-common
@@ -309,3 +319,12 @@ networks:
 volumes:
   db_data:
   minio_data:
+
+x-resources:
+  &high-memory
+    deploy:
+      resources:
+        limits:
+          memory: 16g
+        reservations:
+          memory: 8g
