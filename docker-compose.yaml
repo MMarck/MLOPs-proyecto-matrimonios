@@ -182,22 +182,22 @@ services:
     volumes:
     - ${FASTAPI_PROJ_DIR:-./fastapi}:/opt/fastapi
 
-  # airflow-webserver:
-  #   <<: *airflow-common
-  #   container_name: airflow_webserver
-  #   command: webserver
-  #   ports:
-  #     - "${AIRFLOW_PORT:-8080}:8080"
-  #   healthcheck:
-  #     test: [ "CMD", "curl", "--fail", "http://localhost:8080/health" ]
-  #     interval: 60s
-  #     timeout: 10s
-  #     retries: 5
-  #   restart: always
-  #   depends_on:
-  #     <<: *airflow-common-depends-on
-  #     airflow-init:
-  #       condition: service_completed_successfully
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow_webserver
+    command: webserver
+    ports:
+      - "${AIRFLOW_PORT:-8080}:8080"
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "http://localhost:8080/health" ]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
 
   airflow-cli:
     <<: *airflow-common
