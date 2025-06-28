@@ -1,112 +1,90 @@
-# Ejemplo de Implementación de un Modelo de Heart Disease 
-### MLPOS1 - CEIA - FIUBA
+# Ejemplo de Implementación de un Modelo de Predicción de Divorcios en Ecuador
+### MLOPS - CEIA - FIUBA
 
-En este ejemplo, mostramos una implementación de un modelo productivo para detectar si un 
-paciente tiene una enfermedad cardiaca o no, utilizando el servicio de 
-**ML Models and something more Inc.**. Para ello, obtenemos los datos de 
-[Heart Disease - UCI Machine Learning Repository](https://archive.ics.uci.edu/dataset/45/heart+disease).
+En este proyecto mostramos una implementación completa y automatizada de un modelo predictivo de divorcios en Ecuador utilizando herramientas de MLOps. El sistema sigue buenas prácticas de producción, incluyendo almacenamiento de datos, entrenamiento de modelos, experimentación, despliegue de una API de predicción y reentrenamiento automático.
 
-La implementación incluye:
+Los datos utilizados provienen del **Instituto Nacional de Estadística y Censos (INEC)** de **Ecuador**, asegurando así la relevancia local del modelo.
 
-- En Apache Airflow, un DAG que obtiene los datos del repositorio, realiza limpieza y 
-feature engineering, y guarda en el bucket `s3://data` los datos separados para entrenamiento 
-y pruebas. MLflow hace seguimiento de este procesamiento.
-- Una notebook para ejecutar localmente con Optuna, que realiza una búsqueda de 
-hiperparámetros y encuentra el mejor modelo utilizando F1-score. Todo el experimento se 
-registra en MLflow, se generan gráficos de importancia de características, y además, se 
-registra el modelo en el registro de modelos de MLflow.
-- Un servicio de API del modelo, que toma el artefacto de MLflow y lo expone para realizar 
-predicciones.
-- En Apache Airflow, un DAG que, dado un nuevo conjunto de datos, reentrena el modelo. Se 
-compara este modelo con el mejor modelo (llamado `champion`), y si es mejor, se reemplaza. Todo 
-se lleva a cabo siendo registrado en MLflow.
+## Autores
 
-![Diagrama de servicios](example_project.png)
+Este proyecto fue desarrollado por **Yandri Uchuari** y **Marck Murillo** como parte del curso de MLOps del CEIA - FIUBA.
 
-Las flechas verdes y violetas representan nuevas conexiones en comparación con el proyecto base.
+## Componentes del Proyecto
 
-## Testeo de Funcionamiento
+- En **Apache Airflow**, un DAG que descarga y procesa los datos, realiza limpieza, transforma los features relevantes y guarda conjuntos separados para entrenamiento y prueba en el bucket `s3://divorcios-data`. Todo el proceso se rastrea con **MLflow**.
+- Un **servicio API (FastAPI)** que sirve el modelo registrado, exponiendo un endpoint REST para realizar predicciones a partir de nuevos datos.
+- Otro DAG en **Airflow** que permite reentrenar el modelo con un nuevo dataset. Si el nuevo modelo supera en precisión al modelo `champion`, es promovido automáticamente a producción.
 
-El orden para probar el funcionamiento completo es el siguiente:
+![Diagrama de arquitectura](/final_assign.png)
 
-1. Tan pronto como se levante el sistema multi-contenedor, ejecuta en Airflow el DAG 
-llamado `process_etl_heart_data`, de esta manera se crearán los datos en el 
-bucket `s3://data`.
-2. Ejecuta la notebook (ubicada en `notebook_example`) para realizar la búsqueda de 
-hiperparámetros y entrenar el mejor modelo.
-3. Utiliza el servicio de API.
+## Pasos para Levantar el Proyecto
 
-Además, una vez entrenado el modelo, puedes ejecutar el DAG `retrain_the_model` para probar 
-un nuevo modelo que compita con el campeón. Antes de hacer esto, ejecuta el DAG 
-`process_etl_heart_data` para que el conjunto de datos sea nuevo, de lo contrario se entrenará 
-el mismo modelo. Este proceso siempre dará como resultado que el modelo inicial es mejor... 
-el motivo de esto se deja al lector para que comprenda lo que está sucediendo.
+1. Clona el repositorio con la rama correspondiente:
+   ```bash
+   git clone -b main --single-branch https://github.com/MMarck/MLOPs-proyecto-matrimonios.git
+   cd MLOPs-proyecto-matrimonios
+   ```
 
-### API 
+2. Asegúrate de tener `docker` y `docker-compose` instalados.
 
-Podemos realizar predicciones utilizando la API, accediendo a `http://localhost:8800/`.
+3. Crea los archivos `.env` necesarios (si no existen) para configurar tus credenciales y rutas.
 
-Para hacer una predicción, debemos enviar una solicitud al endpoint `Predict` con un 
-cuerpo de tipo JSON que contenga un campo de características (`features`) con cada 
-entrada para el modelo.
+4. Ejecuta el entorno multi-contenedor:
+   ```bash
+   docker-compose --profile all up
+   ```
 
-Un ejemplo utilizando `curl` sería:
+5. Ingresa a la interfaz de Airflow en `http://localhost:8080` y ejecuta el DAG `etl_divorcios_data`.
+
+6. Ejecuta el DAG `entrenamiento_inicial_modelo`.
+
+
+7. Accede a la API de predicción en `http://localhost:8800/docs`.
+
+8. Para probar reentrenamientos automáticos, ejecuta el DAG `retrain_model_if_better`.
+
+## Ejemplo de Uso de la API
 
 ```bash
-curl -X 'POST' \
-  'http://localhost:8800/predict/' \
+curl -X POST 'http://localhost:8800/predict/' \
   -H 'accept: application/json' \
   -H 'Content-Type: application/json' \
   -d '{
-  "features": {
-    "age": 67,
-    "ca": 3,
-    "chol": 286,
-    "cp": 4,
-    "exang": 1,
-    "fbs": 0,
-    "oldpeak": 1.5,
-    "restecg": 2,
-    "sex": 1,
-    "slope": 2,
-    "thal": 3,
-    "thalach": 108,
-    "trestbps": 160
-  }
-}'
+    "features": {
+      "dur_mat": 0,
+      "hijos_2": 0,
+      "edad_2": 18,
+      "edad_1": 18,
+      "area_1": "Urbana",
+      "area_2": "Urbana",
+      "hijos_rec": 2,
+      "mcap_bie": "No",
+      "p_etnica1": "Mestizo",
+      "cant_insc": "Guayaquil",
+      "p_etnica2": "Mestizo",
+      "cant_hab1": "Quito",
+      "cant_hab2": "Guayaquil",
+      "sabe_leer2": "Si",
+      "sabe_leer1": "Si",
+      "mes_nac1": "Junio",
+      "niv_inst2": "Superior Universitaria",
+      "prov_insc": "Pichincha",
+      "mes_nac2": "Agosto"
+    }
+  }'
 ```
 
-La respuesta del modelo será un valor booleano y un mensaje en forma de cadena de texto que 
-indicará si el paciente tiene o no una enfermedad cardiaca.
+Respuesta esperada:
 
 ```json
 {
-  "int_output": true,
-  "str_output": "Heart disease detected"
+  "int_output": 0,
+  "str_output": "No divorcio"
 }
 ```
 
-Para obtener más detalles sobre la API, ingresa a `http://localhost:8800/docs`.
-
-Nota: Recuerda que si esto se ejecuta en un servidor diferente a tu computadora, debes reemplazar 
-`localhost` por la IP correspondiente o el dominio DNS, si corresponde.
-
-Nota: Recordar que si esto se ejecuta en un servidor aparte de tu computadora, reemplazar a 
-localhost por la IP correspondiente o DNS domain si corresponde.
-
-La forma en que se implementó tiene la desventaja de que solo se puede hacer una predicción a 
-la vez, pero tiene la ventaja de que FastAPI y Pydantic nos permiten tener un fuerte control 
-sobre los datos sin necesidad de agregar una línea de código adicional. FastAPI maneja toda 
-la validación.
-
-Otra forma más típica es pasar los features como una lista u otro formato similar con 
-N observaciones y M features, lo que permite realizar varias predicciones al mismo tiempo. 
-Sin embargo, se pierde la validación automática.
-
 ## Nota Final
 
-Si desean utilizar este proyecto como base para su propia implementación, es válido. 
-Además, podrían agregar un frontend que se comunique con la API para mejorar la experiencia 
-de usuario.
+Este proyecto puede ser utilizado como base para otros modelos sociales predictivos en Ecuador o Latinoamérica. Se aceptan Pull Requests con mejoras o contribuciones.
 
-También, si desean mejorar este ejemplo, ¡los Pull Requests son bienvenidos!
+---

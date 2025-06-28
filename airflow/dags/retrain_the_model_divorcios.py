@@ -1,12 +1,10 @@
 import datetime
-
 from airflow.decorators import dag, task
 
 markdown_text = """
-### DAG TODAVIA NO IMPLEMENTADO
-### Re-entrenar el modelo para el predictor de divorcios para Ecuador con datos de 2023
+### Reentrenamiento automático del modelo de divorcios
 
-Este DAG re-entrena el modelo basado en nuevos datos, prueba el modelo anterior y pone en producción el nuevo
+Este DAG entrena un nuevo modelo con datos actualizados, evalúa contra el modelo actual en producción (`champion`) y lo reemplaza solo si el nuevo obtiene mejor `accuracy`.
 """
 
 default_args = {
@@ -19,241 +17,118 @@ default_args = {
 }
 
 @dag(
-    dag_id="reentrenar_al_modelo",
-    description="re-entrena el modelo basado en nuevos datos, prueba el modelo anterior y pone en producción el nuevo",
+    dag_id="reentrenamiento_modelo_divorcios",
+    description="Reentrena el modelo y reemplaza a champion si el nuevo tiene mejor accuracy",
     doc_md=markdown_text,
-    tags=["Re-Train", "Reentrenar", "Divorcios", "Ecuador"],
+    tags=["Reentrenamiento", "Divorcios", "MLflow"],
     default_args=default_args,
     catchup=False,
 )
-def dag_reentrenamiento_modelo():
+def dag_reentrenamiento():
 
     @task.virtualenv(
-        task_id="train_the_challenger_model",
-        requirements=["scikit-learn==1.3.2",
-                      "mlflow==2.10.2",
-                      "awswrangler==3.6.0"],
+        task_id="train_challenger_model",
+        requirements=["scikit-learn==1.3.2", "mlflow==2.10.2", "awswrangler==3.6.0"],
         system_site_packages=True
     )
-    def train_the_challenger_model():
+    def train_challenger():
         import datetime
         import mlflow
         import awswrangler as wr
-
-        from sklearn.base import clone
-        from sklearn.metrics import f1_score
-        from mlflow.models import infer_signature
         from sklearn.ensemble import RandomForestClassifier
+        from sklearn.metrics import accuracy_score
+        from mlflow.models import infer_signature
 
+        mlflow.set_tracking_uri("http://mlflow:5000")
 
-        mlflow.set_tracking_uri('http://mlflow:5000')
+        X_train = wr.s3.read_csv("s3://data/final/train/divorcios_X_train.csv")
+        y_train = wr.s3.read_csv("s3://data/final/train/divorcios_y_train.csv")
+        X_test = wr.s3.read_csv("s3://data/final/test/divorcios_X_test.csv")
+        y_test = wr.s3.read_csv("s3://data/final/test/divorcios_y_test.csv")
 
-        def load_the_champion_model():
+        model = RandomForestClassifier(
+            n_estimators=100,
+            min_samples_split=10,
+            min_samples_leaf=2,
+            max_features='sqrt',
+            max_depth=10,
+            bootstrap=False,
+            random_state=42
+        )
+        model.fit(X_train, y_train.to_numpy().ravel())
 
-            model_name = "divorcios_ecuador_modelo_prod"
-            alias = "champion"
+        y_pred = model.predict(X_test)
+        accuracy = accuracy_score(y_test.to_numpy().ravel(), y_pred)
 
-            client = mlflow.MlflowClient()
-            try:
-                model_data = client.get_model_version_by_alias(model_name, alias)
-            except mlflow.exceptions.MlflowException as e:
-                print(f"Error retrieving model version: {e}")
-                model_data = None
+        mlflow.set_experiment("Divorcios Ecuador")
+        with mlflow.start_run(run_name='Challenger_' + datetime.datetime.now().strftime('%Y%m%d_%H%M%S')) as run:
+            mlflow.log_params(model.get_params())
+            mlflow.log_metric("accuracy", accuracy)
 
-            # si no existe el modelo, se crea uno nuevo
-            if model_data is None:
-                raise ValueError(f"Model {model_name} with alias {alias} not found in MLflow registry.")
-            
-                model_data = RandomForestClassifier( n_estimators=700,
-                                        min_samples_split=10,
-                                        min_samples_leaf=2,
-                                        max_features='sqrt',
-                                        max_depth=30,
-                                        bootstrap=False,
-                                        random_state=42)
-
-
-            champion_version = mlflow.sklearn.load_model(model_data.source)
-            if champion_version is None:
-                raise ValueError(f"Champion model {model_name} with alias {alias} not found in MLflow registry.")
-
-            return champion_version
-
-        def load_the_train_test_data():
-            X_train = wr.s3.read_csv("s3://data/final/train/divorcios_X_train.csv")
-            y_train = wr.s3.read_csv("s3://data/final/train/divorcios_y_train.csv")
-            X_test = wr.s3.read_csv("s3://data/final/test/divorcios_X_test.csv")
-            y_test = wr.s3.read_csv("s3://data/final/test/divorcios_y_test.csv")
-
-            return X_train, y_train, X_test, y_test
-
-        def mlflow_track_experiment(model, X):
-
-            # Track the experiment
-            experiment = mlflow.set_experiment("Divorcios Ecuador")
-
-            mlflow.start_run(run_name='Challenger_run_' + datetime.datetime.today().strftime('%Y/%m/%d-%H:%M:%S"'),
-                             experiment_id=experiment.experiment_id,
-                             tags={"experiment": "challenger models", "dataset": "Divorcios Ecuador"},
-                             log_system_metrics=True)
-
-            params = model.get_params()
-            params["model"] = type(model).__name__
-
-            mlflow.log_params(params)
-
-            # Save the artifact of the challenger model
-            artifact_path = "model"
-
-            signature = infer_signature(X, model.predict(X))
-
+            signature = infer_signature(X_train, model.predict(X_train))
             mlflow.sklearn.log_model(
                 sk_model=model,
-                artifact_path=artifact_path,
+                artifact_path="model",
                 signature=signature,
-                serialization_format='cloudpickle',
-                registered_model_name="divorcios_ecuador_model_dev",
-                metadata={"model_data_version": 1}
+                registered_model_name="divorcios_ecuador_modelo_prod"
             )
 
-            # Obtain the model URI
-            return mlflow.get_artifact_uri(artifact_path)
-
-        def register_challenger(model, f1_score, model_uri):
-
-            client = mlflow.MlflowClient()
-            name = "divorcios_ecuador_modelo_prod"
-
-            # Save the model params as tags
-            tags = model.get_params()
-            tags["model"] = type(model).__name__
-            tags["f1-score"] = f1_score
-
-            # Save the version of the model
-            result = client.create_model_version(
-                name=name,
-                source=model_uri,
-                run_id=model_uri.split("/")[-3],
-                tags=tags
-            )
-
-            # Save the alias as challenger
-            client.set_registered_model_alias(name, "challenger", result.version)
-
-        # Load the champion model
-        champion_model = load_the_champion_model()
-
-        # Clone the model
-        challenger_model = clone(champion_model)
-
-        # Load the dataset
-        X_train, y_train, X_test, y_test = load_the_train_test_data()
-
-        # Fit the training model
-        challenger_model.fit(X_train, y_train.to_numpy().ravel())
-
-        # Obtain the metric of the model
-        y_pred = challenger_model.predict(X_test)
-        f1_score = f1_score(y_test.to_numpy().ravel(), y_pred)
-
-        # Track the experiment
-        artifact_uri = mlflow_track_experiment(challenger_model, X_train)
-
-        # Record the model
-        register_challenger(challenger_model, f1_score, artifact_uri)
-
+            run_id = run.info.run_id
+            uri = f"runs:/{run_id}/model"
+        
+        return {"accuracy": accuracy, "model_uri": uri}
 
     @task.virtualenv(
-        task_id="train_the_challenger_model",
-        requirements=["scikit-learn==1.3.2",
-                      "mlflow==2.10.2",
-                      "awswrangler==3.6.0"],
+        task_id="compare_and_promote_model",
+        requirements=["mlflow==2.10.2"],
         system_site_packages=True
     )
-    def evaluate_champion_challenge():
+    def compare_and_promote(challenger_info: dict):
         import mlflow
+        from sklearn.metrics import accuracy_score
+        import pandas as pd
         import awswrangler as wr
 
-        from sklearn.metrics import f1_score
+        mlflow.set_tracking_uri("http://mlflow:5000")
 
-        mlflow.set_tracking_uri('http://mlflow:5000')
+        client = mlflow.MlflowClient()
+        model_name = "divorcios_ecuador_modelo_prod"
 
-        def load_the_model(alias):
-            model_name = "heart_disease_model_prod"
+        # Accuracy del challenger
+        challenger_accuracy = challenger_info["accuracy"]
+        challenger_uri = challenger_info["model_uri"]
 
-            client = mlflow.MlflowClient()
-            model_data = client.get_model_version_by_alias(model_name, alias)
+        # Cargar champion actual
+        try:
+            version = client.get_model_version_by_alias(model_name, "champion")
+            champion_model = mlflow.sklearn.load_model(version.source)
+        except:
+            print("No hay modelo 'champion'. Promocionando challenger directamente.")
+            # Obtener la versión más reciente en etapa "None"
+            model_versions = client.get_latest_versions(model_name, stages=["None"])
+            if not model_versions:
+                raise ValueError(f"No se encontraron versiones en etapa 'None' para el modelo {model_name}")
+            model_version = model_versions[0].version
+            client.set_registered_model_alias(model_name, "champion", model_version)
+            return
 
-            model = mlflow.sklearn.load_model(model_data.source)
+        # Cargar datos de prueba
+        X_test = wr.s3.read_csv("s3://data/final/test/divorcios_X_test.csv")
+        y_test = wr.s3.read_csv("s3://data/final/test/divorcios_y_test.csv")
 
-            return model
-
-        def load_the_test_data():
-            X_test = wr.s3.read_csv("s3://data/final/test/heart_X_test.csv")
-            y_test = wr.s3.read_csv("s3://data/final/test/heart_y_test.csv")
-
-            return X_test, y_test
-
-        def promote_challenger(name):
-
-            client = mlflow.MlflowClient()
-
-            # Demote the champion
-            client.delete_registered_model_alias(name, "champion")
-
-            # Load the challenger from registry
-            challenger_version = client.get_model_version_by_alias(name, "challenger")
-
-            # delete the alias of challenger
-            client.delete_registered_model_alias(name, "challenger")
-
-            # Transform in champion
-            client.set_registered_model_alias(name, "champion", challenger_version.version)
-
-        def demote_challenger(name):
-
-            client = mlflow.MlflowClient()
-
-            # delete the alias of challenger
-            client.delete_registered_model_alias(name, "challenger")
-
-        # Load the champion model
-        champion_model = load_the_model("champion")
-
-        # Load the challenger model
-        challenger_model = load_the_model("challenger")
-
-        # Load the dataset
-        X_test, y_test = load_the_test_data()
-
-        # Obtain the metric of the models
         y_pred_champion = champion_model.predict(X_test)
-        f1_score_champion = f1_score(y_test.to_numpy().ravel(), y_pred_champion)
+        champion_accuracy = accuracy_score(y_test.to_numpy().ravel(), y_pred_champion)
 
-        y_pred_challenger = challenger_model.predict(X_test)
-        f1_score_challenger = f1_score(y_test.to_numpy().ravel(), y_pred_challenger)
-
-        experiment = mlflow.set_experiment("Heart Disease")
-
-        # Obtain the last experiment run_id to log the new information
-        list_run = mlflow.search_runs([experiment.experiment_id], output_format="list")
-
-        with mlflow.start_run(run_id=list_run[0].info.run_id):
-            mlflow.log_metric("test_f1_challenger", f1_score_challenger)
-            mlflow.log_metric("test_f1_champion", f1_score_champion)
-
-            if f1_score_challenger > f1_score_champion:
-                mlflow.log_param("Winner", 'Challenger')
-            else:
-                mlflow.log_param("Winner", 'Champion')
-
-        name = "heart_disease_model_prod"
-        if f1_score_challenger > f1_score_champion:
-            promote_challenger(name)
+        if challenger_accuracy > champion_accuracy:
+            print(f"Nuevo modelo mejor: {challenger_accuracy:.4f} > {champion_accuracy:.4f}. Promoviendo...")
+            run_id = challenger_uri.split("/")[1]
+            version = client.get_model_version(model_name, run_id=run_id).version
+            client.set_registered_model_alias(model_name, "champion", version)
         else:
-            demote_challenger(name)
+            print(f"Champion sigue siendo mejor: {champion_accuracy:.4f} ≥ {challenger_accuracy:.4f}")
 
-    train_the_challenger_model() >> evaluate_champion_challenge()
+    # Dependencia entre tareas
+    challenger_info = train_challenger()
+    compare_and_promote(challenger_info)
 
-
-my_dag = dag_reentrenamiento_modelo()
+my_dag = dag_reentrenamiento()
